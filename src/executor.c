@@ -68,36 +68,67 @@ void run_single(Command cmd) {
         return;
     }
 
-    // built in: update
-    if (strcmp(cmd.name, "update") == 0) {
-        printf("rebuilding ohsh...\n");
-        fflush(stdout);
+  // built in: update
+if (strcmp(cmd.name, "update") == 0) {
+    printf("checking for updates...\n");
+    fflush(stdout);
 
-        char build_cmd[1024];
-        snprintf(build_cmd, sizeof(build_cmd), "cd %s && make build", OHSH_SRC_DIR);
+    // get the download url of the latest release binary
+    int result = system(
+        "curl -s https://api.github.com/repos/gabex47/ohsh/releases/latest "
+        "| grep browser_download_url "
+        "| cut -d '\"' -f 4 "
+        "> /tmp/ohsh_url.txt"
+    );
 
-        int result = system(build_cmd);
-        if (result != 0) {
-            printf("ohsh: build failed. check your code for errors.\n");
-            return;
-        }
-
-        printf("installing...\n");
-        fflush(stdout);
-
-        char install_cmd[1024];
-        snprintf(install_cmd, sizeof(install_cmd), "sudo cp %s/ohsh /usr/local/bin/ohsh", OHSH_SRC_DIR);
-
-        result = system(install_cmd);
-        if (result != 0) {
-            printf("ohsh: install failed.\n");
-            return;
-        }
-
-        printf("done! ohsh is up to date.\n");
+    // read the url from the file
+    FILE *f = fopen("/tmp/ohsh_url.txt", "r");
+    if (!f) {
+        printf("ohsh: could not check for updates\n");
         return;
     }
 
+    char url[1024];
+    if (!fgets(url, sizeof(url), f)) {
+        printf("ohsh: no releases found\n");
+        fclose(f);
+        return;
+    }
+    fclose(f);
+
+    // strip newline
+    url[strcspn(url, "\n")] = 0;
+
+    if (strlen(url) == 0) {
+        printf("ohsh: no releases found\n");
+        return;
+    }
+
+    printf("downloading latest release...\n");
+    fflush(stdout);
+
+    char download_cmd[2048];
+    snprintf(download_cmd, sizeof(download_cmd),
+        "curl -L -o /tmp/ohsh_new \"%s\" && chmod +x /tmp/ohsh_new", url);
+
+    result = system(download_cmd);
+    if (result != 0) {
+        printf("ohsh: download failed\n");
+        return;
+    }
+
+    printf("installing...\n");
+    fflush(stdout);
+
+    result = system("sudo cp /tmp/ohsh_new /usr/local/bin/ohsh");
+    if (result != 0) {
+        printf("ohsh: install failed\n");
+        return;
+    }
+
+    printf("done! restart ohsh to use the latest version\n");
+    return;
+}
     // built in: cd
     if (strcmp(cmd.name, "cd") == 0) {
         char *dir = cmd.arg_count > 1 ? cmd.args[1] : getenv("HOME");
