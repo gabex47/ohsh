@@ -5,3 +5,4 @@ cd ohsh
 make build
 sudo cp ohsh /usr/local/bin/ohsh
 ```
+to update type ```update``` in ohsh
