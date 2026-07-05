@@ -45,10 +45,24 @@ so existing tools like `grep`, `cat`, `git`, and `make` remain available.
 ## Build
 
 ```sh
+make
+```
+
+This creates the executable in the project root:
+
+- macOS/Linux: `ohsh`
+- Windows: `ohsh.exe`
+
+You can also run the explicit target:
+
+```sh
 make build
 ```
 
-This creates the `ohsh` executable in the project root.
+The Makefile selects the correct platform backend automatically:
+
+- macOS/Linux: `src/platform/unix.c`
+- Windows: `src/platform/windows.c`
 
 ## Install with Homebrew
 
@@ -135,6 +149,12 @@ Or run the binary directly:
 
 ```sh
 ./ohsh
+```
+
+On Windows:
+
+```bat
+ohsh.exe
 ```
 
 You should see:
@@ -246,6 +266,10 @@ src/
   executor.c   dispatches commands and performs native filesystem work
   executor.h   shell context, history, and execution API
   main.c       interactive prompt loop
+  platform/
+    platform.h shared platform API used by the shell engine
+    unix.c     macOS/Linux implementation
+    windows.c  Windows implementation
 Makefile       build, run, and clean targets
 README.md      project documentation
 homebrew-tap/  Homebrew tap files for gabex47/homebrew-tap
@@ -254,21 +278,74 @@ scripts/       local packaging verification helpers
 
 ## Architecture
 
-OHSH has four small layers:
+OHSH has five small layers:
 
 1. `main.c` reads a line, stores it in session history, and runs the pipeline.
 2. `lexer.c` turns input into tokens while preserving quoted filenames.
 3. `parser.c` uses a command-pattern registry to map phrases into typed command
    actions such as `COMMAND_LIST`, `COMMAND_COPY_PATH`, and
    `COMMAND_DELETE_PATH`.
-4. `executor.c` dispatches those actions. OHSH commands use native C APIs like
-   `chdir`, `mkdir`, `open`, `rename`, `unlink`, `opendir`, `readdir`, and
-   `stat`. It also owns the startup screen, prompt, help, examples, tips, and
-   friendly output formatting. Unknown commands fall back to normal system
-   command execution.
+4. `executor.c` dispatches those actions and owns the startup screen, prompt,
+   help, examples, tips, and friendly output formatting.
+5. `src/platform/` owns every OS-specific operation. Core shell logic calls
+   functions such as `ohsh_cd`, `ohsh_mkdir`, `ohsh_delete_file`,
+   `ohsh_rename`, and `ohsh_list_dir_entries` instead of directly calling
+   POSIX or Windows APIs.
 
 This keeps the user-facing language flexible while keeping execution explicit,
-testable, and easier to extend.
+testable, portable, and easier to extend.
+
+## Cross-Platform Support
+
+OHSH is structured as a portable shell engine plus platform backends:
+
+```text
+src/
+  platform/
+    platform.h
+    unix.c
+    windows.c
+```
+
+The required platform API includes:
+
+```c
+int ohsh_cd(const char *path);
+int ohsh_mkdir(const char *path);
+int ohsh_delete_file(const char *path);
+int ohsh_delete_folder(const char *path);
+int ohsh_rename(const char *oldpath, const char *newpath);
+int ohsh_list_dir(const char *path);
+char *ohsh_get_cwd(void);
+```
+
+The platform layer also exposes small helpers for path metadata, callback-based
+directory scanning, file copying/reading, redirection, and external command
+execution. Parser, lexer, and executor code do not include POSIX or Windows
+headers.
+
+Compatibility strategy:
+
+- macOS and Linux use `src/platform/unix.c` with POSIX APIs.
+- Windows uses `src/platform/windows.c` with `_chdir`, `_getcwd`,
+  `CreateDirectoryA`, `FindFirstFileA`, `FindNextFileA`, `DeleteFileA`,
+  `RemoveDirectoryA`, and `MoveFileA`.
+- Future targets such as Termux, WebAssembly, or remote execution can add a new
+  platform backend without changing parser or lexer code.
+
+Windows build with MinGW:
+
+```bat
+mingw32-make
+```
+
+or:
+
+```bat
+make
+```
+
+depending on your Windows toolchain.
 
 ## Development
 
