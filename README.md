@@ -74,6 +74,23 @@ You can also run the explicit target:
 make build
 ```
 
+On Windows with MinGW/MSYS2:
+
+```bat
+mingw32-make
+ohsh.exe
+mingw32-make clean
+```
+
+If your Windows environment provides GNU Make as `make`:
+
+```bat
+make
+make run
+make test
+make clean
+```
+
 The Makefile selects the correct platform backend automatically:
 
 - macOS/Linux: `src/platform/unix.c`
@@ -285,7 +302,7 @@ src/
   lexer.h      lexer token types
   parser.c     translates natural phrases into typed commands
   parser.h     command AST and parser declarations
-  executor.c   dispatches commands and performs native filesystem work
+  executor.c   dispatches commands through the platform layer
   executor.h   shell context, history, and execution API
   main.c       interactive prompt loop
   platform/
@@ -308,11 +325,11 @@ OHSH has four small layers:
 3. `parser.c` uses a command-pattern registry to map phrases into typed command
    actions such as `COMMAND_LIST`, `COMMAND_COPY_PATH`, and
    `COMMAND_DELETE_PATH`.
-4. `executor.c` dispatches those actions. OHSH commands use native C APIs like
-   `chdir`, `mkdir`, `open`, `rename`, `unlink`, `opendir`, `readdir`, and
-   `stat`. It also owns the startup screen, prompt, help, examples, tips, and
+4. `executor.c` dispatches those actions through `src/platform/`, keeping
+   OS-specific filesystem, process, and redirection behavior out of core shell
+   logic. It also owns the startup screen, prompt, help, examples, tips, and
    friendly output formatting. Unknown commands fall back to normal system
-   command execution.
+   command execution through the platform layer.
 
 This keeps the user-facing language flexible while keeping execution explicit,
 testable, and easier to extend.
@@ -327,4 +344,24 @@ make install
 make uninstall
 make clean
 make test
+```
+
+Windows with MinGW/MSYS2:
+
+```bat
+mingw32-make
+mingw32-make run
+mingw32-make test
+mingw32-make clean
+ohsh.exe
+```
+
+Windows when GNU Make is available as `make`:
+
+```bat
+make
+make run
+make test
+make clean
+ohsh.exe
 ```
