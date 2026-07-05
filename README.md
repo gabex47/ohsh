@@ -1,11 +1,8 @@
-# OHSH
+# 🌊 OHSH
 
-OHSH is an experimental human-first shell written in C. It keeps the useful
-parts of a traditional shell, but adds readable commands that feel closer to
-plain English.
+**OHSH** is an experimental human-first shell written in C. It keeps the useful parts of a traditional shell, but adds readable commands that feel closer to plain English.
 
-Instead of requiring new users to memorize terse Unix commands, OHSH lets them
-type commands like:
+Instead of requiring new users to memorize terse Unix commands, OHSH lets them type commands like:
 
 ```ohsh
 show files
@@ -19,8 +16,24 @@ where am i
 show history
 ```
 
-Traditional system commands still work when OHSH does not translate a phrase,
-so existing tools like `grep`, `cat`, `git`, and `make` remain available.
+Traditional system commands still work when OHSH doesn't translate a phrase, so existing tools like `grep`, `cat`, `git`, and `make` remain available.
+
+---
+
+## Table of Contents
+
+- [Features](#features)
+- [Build](#build)
+- [Install](#install)
+  - [Homebrew](#-install-with-homebrew)
+  - [From Source](#install-from-source)
+- [Run](#run)
+- [Command Examples](#command-examples)
+- [Project Structure](#project-structure)
+- [Architecture](#architecture)
+- [Development](#development)
+
+---
 
 ## Features
 
@@ -42,119 +55,126 @@ so existing tools like `grep`, `cat`, `git`, and `make` remain available.
 - Output redirection with `>` and `>>`
 - Colored terminal output
 
+---
+
 ## Build
 
-```sh
+```bash
 make build
 ```
 
 This creates the `ohsh` executable in the project root.
 
-## Install with Homebrew
+---
 
-OHSH includes a ready-to-publish tap template in `homebrew-tap/`.
+## Install
 
-After creating the GitHub repository `gabex47/homebrew-tap` and pushing the
-contents of `homebrew-tap/` to it, install the latest development build from the
-`main` branch with:
+### 🍺 Install with Homebrew
 
-```sh
+OHSH provides an official Homebrew tap for easy installation.
+
+First, add the tap:
+
+```bash
+brew tap gabex47/tap
+```
+
+Install the latest development build from the `main` branch:
+
+```bash
 brew install --HEAD gabex47/tap/ohsh
 ```
 
-Or tap first:
+Or directly:
 
-```sh
-brew tap gabex47/tap
+```bash
 brew install --HEAD ohsh
 ```
 
-Stable Homebrew installs require a tagged OHSH release and a formula URL with a
-SHA256 checksum. Once a stable formula is generated in the tap, users can run:
+#### 🔄 Updating Homebrew Installs
 
-```sh
-brew tap gabex47/tap
-brew install ohsh
-```
+For `--HEAD` installs (tracks the latest `main` commit):
 
-## Updating Homebrew Installs
-
-For a HEAD install:
-
-```sh
-brew update
-brew reinstall --HEAD gabex47/tap/ohsh
-```
-
-For a stable install:
-
-```sh
+```bash
 brew update
 brew upgrade ohsh
 ```
 
-## Uninstalling Homebrew Installs
+To force a rebuild from source:
 
-```sh
+```bash
+brew reinstall gabex47/tap/ohsh
+```
+
+#### ❌ Uninstall
+
+```bash
 brew uninstall ohsh
 ```
 
-To remove the tap too:
+To remove the tap:
 
-```sh
+```bash
 brew untap gabex47/tap
 ```
 
-## Install from Source
+#### ⚠️ Notes
 
-```sh
-make
+- `--HEAD` installs always build from the latest commit on `main`.
+- Homebrew clones the GitHub repo and builds from source automatically.
+- Local changes will **not** affect Homebrew installs unless pushed to GitHub.
+
+### Install from Source
+
+```bash
+make build
 make install
 ```
 
-By default this installs to `/usr/local/bin/ohsh`. Override `PREFIX` when
-needed:
+By default this installs to `/usr/local/bin/ohsh`. Override `PREFIX` when needed:
 
-```sh
+```bash
 make install PREFIX="$HOME/.local"
 ```
 
-Uninstall from the same prefix:
+Uninstall:
 
-```sh
+```bash
 make uninstall PREFIX="$HOME/.local"
 ```
 
+---
+
 ## Run
 
-```sh
+```bash
 make run
 ```
 
-Or run the binary directly:
+Or run directly:
 
-```sh
+```bash
 ./ohsh
 ```
 
 You should see:
 
-```text
-🌊 OHSH v0.3
+```
+🌊 OHSH
 Human-first shell
 
 Type "help" to explore commands.
 Type "examples" to see what you can say.
 
 📁 ~/Desktop/ohsh
-
-📁 ~/Desktop/ohsh
 >
 ```
 
+---
+
 ## Command Examples
 
-Navigation:
+### Navigation
 
 ```ohsh
 goto Downloads
@@ -168,7 +188,7 @@ go back
 where am i
 ```
 
-Looking around:
+### Looking Around
 
 ```ohsh
 show files
@@ -179,7 +199,7 @@ show txt files
 show files bigger than 10mb
 ```
 
-Creating and reading:
+### Creating and Reading
 
 ```ohsh
 make folder Games
@@ -191,7 +211,7 @@ read notes.txt
 show file notes.txt
 ```
 
-Copying and moving:
+### Copying and Moving
 
 ```ohsh
 copy notes.txt to Backup
@@ -200,7 +220,7 @@ move report.pdf into Documents
 rename draft.txt to final.txt
 ```
 
-Deleting:
+### Deleting
 
 ```ohsh
 delete temp.txt
@@ -211,7 +231,7 @@ delete every txt file
 delete OldFolder permanently
 ```
 
-Shell commands:
+### Shell Commands
 
 ```ohsh
 say hello
@@ -226,7 +246,7 @@ help
 exit
 ```
 
-Pipes and redirection:
+### Pipes and Redirection
 
 ```ohsh
 read notes.txt | grep idea
@@ -235,9 +255,11 @@ say hello >> log.txt
 cat src/main.c | grep include
 ```
 
+---
+
 ## Project Structure
 
-```text
+```
 src/
   lexer.c      tokenizes words, quotes, pipes, and redirection
   lexer.h      lexer token types
@@ -247,34 +269,28 @@ src/
   executor.h   shell context, history, and execution API
   main.c       interactive prompt loop
 Makefile       build, run, and clean targets
-README.md      project documentation
 homebrew-tap/  Homebrew tap files for gabex47/homebrew-tap
-scripts/       local packaging verification helpers
+scripts/       local packaging helpers
 ```
+
+---
 
 ## Architecture
 
-OHSH has four small layers:
+OHSH has four layers:
 
-1. `main.c` reads a line, stores it in session history, and runs the pipeline.
-2. `lexer.c` turns input into tokens while preserving quoted filenames.
-3. `parser.c` uses a command-pattern registry to map phrases into typed command
-   actions such as `COMMAND_LIST`, `COMMAND_COPY_PATH`, and
-   `COMMAND_DELETE_PATH`.
-4. `executor.c` dispatches those actions. OHSH commands use native C APIs like
-   `chdir`, `mkdir`, `open`, `rename`, `unlink`, `opendir`, `readdir`, and
-   `stat`. It also owns the startup screen, prompt, help, examples, tips, and
-   friendly output formatting. Unknown commands fall back to normal system
-   command execution.
+1. **`main.c`** → reads input and manages the loop
+2. **`lexer.c`** → converts text into tokens
+3. **`parser.c`** → converts phrases into structured commands
+4. **`executor.c`** → executes filesystem/system actions
 
-This keeps the user-facing language flexible while keeping execution explicit,
-testable, and easier to extend.
+Unknown commands fall back to the system shell.
+
+---
 
 ## Development
 
-Useful commands:
-
-```sh
+```bash
 make
 make build
 make run
@@ -283,35 +299,3 @@ make uninstall
 make clean
 make test
 ```
-
-When adding commands, prefer adding a focused parser handler and executor action
-instead of special-casing behavior in the prompt loop. Destructive operations
-should keep friendly guardrails, clear error messages, and native filesystem
-calls wherever possible.
-
-## Homebrew Tap Maintenance
-
-The generated tap lives in `homebrew-tap/` so it can be copied or pushed to a
-separate GitHub repository named `homebrew-tap`.
-
-Validate the HEAD formula locally with:
-
-```sh
-./scripts/verify-homebrew-head.sh
-```
-
-If `ohsh` is already installed with Homebrew, the script stops before replacing
-it. To allow a fresh uninstall/install verification:
-
-```sh
-OHSH_HOMEBREW_REINSTALL=1 ./scripts/verify-homebrew-head.sh
-```
-
-After publishing a tagged release, generate stable formula metadata with:
-
-```sh
-cd homebrew-tap
-./scripts/update-stable-formula.sh v0.3.0
-```
-
-Commit and push the updated `Formula/ohsh.rb` in `gabex47/homebrew-tap`.
