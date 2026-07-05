@@ -1,34 +1,39 @@
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
+#include "executor.h"
 #include "lexer.h"
 #include "parser.h"
-#include "executor.h"
 
-int main() {
+int main(void) {
     char input[1024];
+    ShellContext context;
 
-    printf("ohsh 0.1 - type 'exit' to quit\n");
+    init_shell_context(&context);
+    print_welcome();
 
     while (1) {
-        printf("ohsh > ");
-        fflush(stdout);
+        print_prompt();
 
-        if (!fgets(input, 1024, stdin)) break;
+        if (!fgets(input, sizeof(input), stdin)) break;
 
-        input[strcspn(input, "\n")] = 0;
-        if (strlen(input) == 0) continue;
+        input[strcspn(input, "\n")] = '\0';
+        if (input[0] == '\0') continue;
 
-        if (strcmp(input, "exit") == 0) {
-            printf("bye\n");
-            break;
+        add_history(&context, input);
+
+        TokenList tokens = tokenize(input);
+        Pipeline pipeline = parse(tokens);
+        ExecutionResult result = execute(pipeline, &context);
+        if (result == EXECUTION_CONTINUE && pipeline.command_count == 1) {
+            maybe_print_tip(&context, pipeline.commands[0].kind);
         }
 
-        TokenList list = tokenize(input);
-        Pipeline pipeline = parse(list);
-        execute(pipeline);
-        free_tokens(list);
+        free_pipeline(&pipeline);
+        free_tokens(tokens);
+
+        if (result == EXECUTION_EXIT) break;
     }
 
+    free_shell_context(&context);
     return 0;
 }
