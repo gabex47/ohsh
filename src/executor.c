@@ -1133,6 +1133,18 @@ static int set_color(const Command *command) {
 }
 
 static int update_ohsh(void) {
+    char *makefile = join_path(OHSH_SRC_DIR, "Makefile");
+    if (!makefile || access(makefile, R_OK) != 0) {
+        printf("I can't rebuild from this installation because the source tree is not available.\n");
+        printf("If you installed OHSH with Homebrew, update it with:\n");
+        printf("  brew upgrade ohsh\n");
+        printf("or, for the latest main branch build:\n");
+        printf("  brew reinstall --HEAD gabex47/tap/ohsh\n");
+        free(makefile);
+        return 1;
+    }
+    free(makefile);
+
     printf("🛠 Rebuilding OHSH...\n");
     fflush(stdout);
 

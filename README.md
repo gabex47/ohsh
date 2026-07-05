@@ -50,6 +50,81 @@ make build
 
 This creates the `ohsh` executable in the project root.
 
+## Install with Homebrew
+
+OHSH includes a ready-to-publish tap template in `homebrew-tap/`.
+
+After creating the GitHub repository `gabex47/homebrew-tap` and pushing the
+contents of `homebrew-tap/` to it, install the latest development build from the
+`main` branch with:
+
+```sh
+brew install --HEAD gabex47/tap/ohsh
+```
+
+Or tap first:
+
+```sh
+brew tap gabex47/tap
+brew install --HEAD ohsh
+```
+
+Stable Homebrew installs require a tagged OHSH release and a formula URL with a
+SHA256 checksum. Once a stable formula is generated in the tap, users can run:
+
+```sh
+brew tap gabex47/tap
+brew install ohsh
+```
+
+## Updating Homebrew Installs
+
+For a HEAD install:
+
+```sh
+brew update
+brew reinstall --HEAD gabex47/tap/ohsh
+```
+
+For a stable install:
+
+```sh
+brew update
+brew upgrade ohsh
+```
+
+## Uninstalling Homebrew Installs
+
+```sh
+brew uninstall ohsh
+```
+
+To remove the tap too:
+
+```sh
+brew untap gabex47/tap
+```
+
+## Install from Source
+
+```sh
+make
+make install
+```
+
+By default this installs to `/usr/local/bin/ohsh`. Override `PREFIX` when
+needed:
+
+```sh
+make install PREFIX="$HOME/.local"
+```
+
+Uninstall from the same prefix:
+
+```sh
+make uninstall PREFIX="$HOME/.local"
+```
+
 ## Run
 
 ```sh
@@ -173,6 +248,8 @@ src/
   main.c       interactive prompt loop
 Makefile       build, run, and clean targets
 README.md      project documentation
+homebrew-tap/  Homebrew tap files for gabex47/homebrew-tap
+scripts/       local packaging verification helpers
 ```
 
 ## Architecture
@@ -198,12 +275,43 @@ testable, and easier to extend.
 Useful commands:
 
 ```sh
+make
 make build
 make run
+make install
+make uninstall
 make clean
+make test
 ```
 
 When adding commands, prefer adding a focused parser handler and executor action
 instead of special-casing behavior in the prompt loop. Destructive operations
 should keep friendly guardrails, clear error messages, and native filesystem
 calls wherever possible.
+
+## Homebrew Tap Maintenance
+
+The generated tap lives in `homebrew-tap/` so it can be copied or pushed to a
+separate GitHub repository named `homebrew-tap`.
+
+Validate the HEAD formula locally with:
+
+```sh
+./scripts/verify-homebrew-head.sh
+```
+
+If `ohsh` is already installed with Homebrew, the script stops before replacing
+it. To allow a fresh uninstall/install verification:
+
+```sh
+OHSH_HOMEBREW_REINSTALL=1 ./scripts/verify-homebrew-head.sh
+```
+
+After publishing a tagged release, generate stable formula metadata with:
+
+```sh
+cd homebrew-tap
+./scripts/update-stable-formula.sh v0.3.0
+```
+
+Commit and push the updated `Formula/ohsh.rb` in `gabex47/homebrew-tap`.

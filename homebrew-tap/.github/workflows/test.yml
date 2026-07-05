@@ -1,0 +1,29 @@
+name: Test Homebrew Tap
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: macos-14
+
+    steps:
+      - name: Check out tap
+        uses: actions/checkout@v4
+
+      - name: Register tap checkout
+        run: |
+          mkdir -p "$(brew --repository)/Library/Taps/gabex47"
+          ln -s "$GITHUB_WORKSPACE" "$(brew --repository)/Library/Taps/gabex47/homebrew-tap"
+
+      - name: Audit formula
+        run: brew audit --strict --formula gabex47/tap/ohsh
+
+      - name: Install HEAD formula
+        run: brew install --HEAD --build-from-source gabex47/tap/ohsh
+
+      - name: Test formula
+        run: brew test gabex47/tap/ohsh
