@@ -58,6 +58,7 @@ typedef struct {
 
     int recursive;
     int bulk;
+    int force;
 
     char *redirect_out;
     char *redirect_in;
@@ -67,6 +68,7 @@ typedef struct {
 typedef struct {
     Command commands[MAX_COMMANDS];
     int command_count;
+    char *raw_line;
 } Pipeline;
 
 Pipeline parse(TokenList list);

@@ -457,6 +457,14 @@ int ohsh_run_pipeline(const OhshProcessCommand *commands, int count) {
     return result;
 }
 
+int ohsh_run_shell_line(const char *line, const char *preferred_shell) {
+    const char *shell = preferred_shell && preferred_shell[0] != '\0' ? preferred_shell : getenv("SHELL");
+    if (!shell || shell[0] == '\0') shell = "/bin/sh";
+
+    char *const argv[] = {(char *)shell, "-c", (char *)line, NULL};
+    return ohsh_run_command(argv, NULL, NULL, 0);
+}
+
 const char *ohsh_platform_error(void) {
     return last_error[0] ? last_error : "platform operation failed";
 }

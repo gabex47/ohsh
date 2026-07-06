@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up MSYS2
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          install: make mingw-w64-ucrt-x86_64-gcc
+
+      - name: Build
+        if: runner.os != 'Windows'
+        run: make build
+
+      - name: Test
+        if: runner.os != 'Windows'
+        run: make test
+
+      - name: Windows build
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: make build
+
+      - name: Windows smoke test
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          printf 'examples\nwhere am i\nexit\n' | ./ohsh.exe
+
+  sanitizer:
+    name: Sanitizers
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ASan and UBSan
+        run: make sanitize

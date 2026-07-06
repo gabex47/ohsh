@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include "executor.h"
 #include "platform/platform.h"
 
@@ -63,6 +64,19 @@ static int compare_ignore_case(const char *left, const char *right) {
         right++;
     }
     return (unsigned char)*left - (unsigned char)*right;
+}
+
+static char *trim_in_place(char *value) {
+    while (*value && isspace((unsigned char)*value)) value++;
+    char *end = value + strlen(value);
+    while (end > value && isspace((unsigned char)end[-1])) end--;
+    *end = '\0';
+    if ((value[0] == '"' && end > value + 1 && end[-1] == '"') ||
+        (value[0] == '\'' && end > value + 1 && end[-1] == '\'')) {
+        value++;
+        end[-1] = '\0';
+    }
+    return value;
 }
 
 static char *join_path(const char *left, const char *right) {
@@ -320,7 +334,126 @@ void init_shell_context(ShellContext *context) {
     context->commands_since_tip = 0;
     context->next_tip = 0;
     context->tips_enabled = 1;
+    context->confirm_destructive = 1;
+    context->color_enabled = 1;
+    context->non_interactive = 0;
+    context->assume_yes = 0;
+    context->debug_enabled = 0;
+    context->last_status = 0;
+    context->fallback_shell = NULL;
+    context->alias_count = 0;
     for (int i = 0; i < OHSH_HISTORY_MAX; i++) context->items[i] = NULL;
+    for (int i = 0; i < OHSH_ALIAS_MAX; i++) {
+        context->aliases[i].phrase = NULL;
+        context->aliases[i].replacement = NULL;
+    }
+}
+
+static int parse_bool_value(const char *value, int fallback) {
+    if (!value) return fallback;
+    if (equals_ignore_case(value, "true") || equals_ignore_case(value, "yes") ||
+        equals_ignore_case(value, "on") || strcmp(value, "1") == 0) {
+        return 1;
+    }
+    if (equals_ignore_case(value, "false") || equals_ignore_case(value, "no") ||
+        equals_ignore_case(value, "off") || strcmp(value, "0") == 0) {
+        return 0;
+    }
+    return fallback;
+}
+
+static void add_alias(ShellContext *context, const char *phrase, const char *replacement) {
+    if (!context || !phrase || !replacement || phrase[0] == '\0' || replacement[0] == '\0') return;
+    if (context->alias_count >= OHSH_ALIAS_MAX) return;
+
+    context->aliases[context->alias_count].phrase = dup_string(phrase);
+    context->aliases[context->alias_count].replacement = dup_string(replacement);
+    if (!context->aliases[context->alias_count].phrase || !context->aliases[context->alias_count].replacement) {
+        free(context->aliases[context->alias_count].phrase);
+        free(context->aliases[context->alias_count].replacement);
+        context->aliases[context->alias_count].phrase = NULL;
+        context->aliases[context->alias_count].replacement = NULL;
+        return;
+    }
+    context->alias_count++;
+}
+
+static void load_config_file(ShellContext *context, const char *path) {
+    FILE *file = fopen(path, "r");
+    if (!file) return;
+
+    char line[2048];
+    while (fgets(line, sizeof(line), file)) {
+        line[strcspn(line, "\r\n")] = '\0';
+        char *text = trim_in_place(line);
+        if (text[0] == '\0' || text[0] == '#') continue;
+
+        if (strncmp(text, "alias ", 6) == 0) {
+            char *definition = trim_in_place(text + 6);
+            char *equals = strchr(definition, '=');
+            if (!equals) continue;
+            *equals = '\0';
+            char *phrase = trim_in_place(definition);
+            char *replacement = trim_in_place(equals + 1);
+            add_alias(context, phrase, replacement);
+            continue;
+        }
+
+        char *equals = strchr(text, '=');
+        if (!equals) continue;
+        *equals = '\0';
+        char *key = trim_in_place(text);
+        char *value = trim_in_place(equals + 1);
+
+        if (equals_ignore_case(key, "confirm") || equals_ignore_case(key, "confirm_destructive")) {
+            context->confirm_destructive = parse_bool_value(value, context->confirm_destructive);
+        } else if (equals_ignore_case(key, "tips")) {
+            context->tips_enabled = parse_bool_value(value, context->tips_enabled);
+        } else if (equals_ignore_case(key, "color") || equals_ignore_case(key, "colors")) {
+            context->color_enabled = parse_bool_value(value, context->color_enabled);
+        } else if (equals_ignore_case(key, "fallback_shell")) {
+            free(context->fallback_shell);
+            context->fallback_shell = dup_string(value);
+        }
+    }
+
+    fclose(file);
+}
+
+void load_shell_config(ShellContext *context) {
+    char *home = ohsh_get_home();
+    if (home) {
+        char *home_config = join_path(home, ".ohshrc");
+        if (home_config) load_config_file(context, home_config);
+        free(home_config);
+        ohsh_free(home);
+    }
+    load_config_file(context, ".ohshrc");
+}
+
+static int alias_matches_prefix(const char *line, const char *phrase) {
+    size_t length = strlen(phrase);
+    if (strncasecmp(line, phrase, length) != 0) return 0;
+    return line[length] == '\0' || isspace((unsigned char)line[length]);
+}
+
+char *expand_alias_line(const ShellContext *context, const char *line) {
+    if (!context || !line) return NULL;
+    for (int i = 0; i < context->alias_count; i++) {
+        const char *phrase = context->aliases[i].phrase;
+        const char *replacement = context->aliases[i].replacement;
+        if (!phrase || !replacement || !alias_matches_prefix(line, phrase)) continue;
+
+        const char *rest = line + strlen(phrase);
+        while (*rest && isspace((unsigned char)*rest)) rest++;
+        size_t length = strlen(replacement) + (*rest ? 1 + strlen(rest) : 0) + 1;
+        char *expanded = malloc(length);
+        if (!expanded) return NULL;
+        if (*rest) snprintf(expanded, length, "%s %s", replacement, rest);
+        else snprintf(expanded, length, "%s", replacement);
+        return expanded;
+    }
+    return NULL;
 }
 
 void add_history(ShellContext *context, const char *line) {
@@ -339,6 +472,15 @@ void free_shell_context(ShellContext *context) {
         free(context->items[i]);
         context->items[i] = NULL;
     }
+    for (int i = 0; i < context->alias_count; i++) {
+        free(context->aliases[i].phrase);
+        free(context->aliases[i].replacement);
+        context->aliases[i].phrase = NULL;
+        context->aliases[i].replacement = NULL;
+    }
+    free(context->fallback_shell);
+    context->fallback_shell = NULL;
+    context->alias_count = 0;
     context->count = 0;
 }
 
@@ -580,7 +722,24 @@ static char *resolve_destination_path(const char *source, const char *destinatio
     return dup_string(destination);
 }
 
-static int copy_path_command(const Command *command) {
+static int confirm_action(ShellContext *context, const Command *command, const char *message) {
+    if (!context || !context->confirm_destructive || context->assume_yes || command->force) return 1;
+    if (context->non_interactive) {
+        printf("🛡 %s\n", message);
+        printf("   Script mode will not continue without --yes, -y, or --force.\n");
+        return 0;
+    }
+
+    char answer[32];
+    printf("🛡 %s\n", message);
+    printf("   Type yes to continue: ");
+    fflush(stdout);
+    if (!fgets(answer, sizeof(answer), stdin)) return 0;
+    answer[strcspn(answer, "\r\n")] = '\0';
+    return equals_ignore_case(answer, "yes") || equals_ignore_case(answer, "y");
+}
+
+static int copy_path_command(const Command *command, ShellContext *context) {
     char *source = expand_user_path(command->source);
     char *destination = expand_user_path(command->destination);
     if (!source || !destination) {
@@ -605,6 +764,17 @@ static int copy_path_command(const Command *command) {
     }
 
     char *final_destination = resolve_destination_path(source, destination);
+    if (final_destination && ohsh_path_type(final_destination) != OHSH_PATH_MISSING) {
+        char message[1024];
+        snprintf(message, sizeof(message), "Copying will overwrite \"%s\".", command->destination);
+        if (!confirm_action(context, command, message)) {
+            free(source);
+            free(destination);
+            free(final_destination);
+            return 1;
+        }
+    }
+
     if (!final_destination || ohsh_copy_file(source, final_destination) != 0) {
         printf("I couldn't copy \"%s\" to \"%s\": %s\n", command->source, command->destination, ohsh_platform_error());
         free(source);
@@ -620,7 +790,7 @@ static int copy_path_command(const Command *command) {
     return 0;
 }
 
-static int move_path_command(const Command *command) {
+static int move_path_command(const Command *command, ShellContext *context) {
     char *source = expand_user_path(command->source);
     char *destination = expand_user_path(command->destination);
     if (!source || !destination) {
@@ -638,6 +808,17 @@ static int move_path_command(const Command *command) {
     }
 
     char *final_destination = resolve_destination_path(source, destination);
+    if (final_destination && ohsh_path_type(final_destination) != OHSH_PATH_MISSING) {
+        char message[1024];
+        snprintf(message, sizeof(message), "Moving will overwrite \"%s\".", command->destination);
+        if (!confirm_action(context, command, message)) {
+            free(source);
+            free(destination);
+            free(final_destination);
+            return 1;
+        }
+    }
+
     if (!final_destination || ohsh_rename(source, final_destination) != 0) {
         if (source_type == OHSH_PATH_FILE && final_destination &&
             ohsh_copy_file(source, final_destination) == 0 && ohsh_delete_file(source) == 0) {
@@ -675,27 +856,31 @@ static int delete_bulk_callback(const OhshDirEntry *entry, void *context) {
     return 0;
 }
 
-static int delete_bulk_files(const Command *command) {
+static int delete_bulk_files(const Command *command, ShellContext *shell_context) {
     if (!command->filter_extension) {
         printf("Delete what kind of file?\n\nExample:\n  delete every txt file\n");
         return 1;
     }
 
-    DeleteBulkContext context;
-    context.command = command;
-    context.deleted = 0;
-    context.failed = 0;
-    if (ohsh_list_dir_entries(".", delete_bulk_callback, &context) != 0) {
+    char message[1024];
+    snprintf(message, sizeof(message), "This will delete every .%s file in the current folder.", command->filter_extension);
+    if (!confirm_action(shell_context, command, message)) return 1;
+
+    DeleteBulkContext delete_context;
+    delete_context.command = command;
+    delete_context.deleted = 0;
+    delete_context.failed = 0;
+    if (ohsh_list_dir_entries(".", delete_bulk_callback, &delete_context) != 0) {
         printf("I couldn't look through this folder: %s\n", ohsh_platform_error());
         return 1;
     }
 
-    if (context.deleted == 0 && context.failed == 0) {
+    if (delete_context.deleted == 0 && delete_context.failed == 0) {
         printf("🌿 I didn't find any .%s files to delete.\n", command->filter_extension);
-    } else if (context.failed == 0) {
-        printf("🗑 Deleted %d .%s file%s.\n", context.deleted, command->filter_extension, context.deleted == 1 ? "" : "s");
+    } else if (delete_context.failed == 0) {
+        printf("🗑 Deleted %d .%s file%s.\n", delete_context.deleted, command->filter_extension, delete_context.deleted == 1 ? "" : "s");
     }
-    return context.failed == 0 ? 0 : 1;
+    return delete_context.failed == 0 ? 0 : 1;
 }
 
 static int is_dangerous_delete_target(const char *target) {
@@ -711,8 +896,8 @@ static int is_dangerous_delete_target(const char *target) {
     return dangerous;
 }
 
-static int delete_path_command(const Command *command) {
-    if (command->bulk) return delete_bulk_files(command);
+static int delete_path_command(const Command *command, ShellContext *context) {
+    if (command->bulk) return delete_bulk_files(command, context);
     if (is_dangerous_delete_target(command->target)) {
         printf("🛡 I won't delete \"%s\" because that target is too broad or too important.\n", command->target);
         return 1;
@@ -729,6 +914,13 @@ static int delete_path_command(const Command *command) {
     }
 
     if (type == OHSH_PATH_FOLDER) {
+        char message[1024];
+        snprintf(message, sizeof(message), "This will delete folder \"%s\"%s.", command->target, command->recursive ? " and everything inside it" : "");
+        if (!confirm_action(context, command, message)) {
+            free(target);
+            return 1;
+        }
+
         int result = command->recursive ? ohsh_delete_folder_recursive(target) : ohsh_delete_folder(target);
         if (result != 0) {
             printf("I couldn't delete folder \"%s\": %s\n", command->target, ohsh_platform_error());
@@ -742,6 +934,13 @@ static int delete_path_command(const Command *command) {
         printf("🗑 Deleted folder \"%s\"%s.\n", command->target, command->recursive ? " permanently" : "");
         free(target);
         return 0;
+    }
+
+    char message[1024];
+    snprintf(message, sizeof(message), "This will delete \"%s\".", command->target);
+    if (!confirm_action(context, command, message)) {
+        free(target);
+        return 1;
     }
 
     if (ohsh_delete_file(target) != 0) {
@@ -764,7 +963,12 @@ static int show_history(const ShellContext *context) {
     return 0;
 }
 
-static int set_color(const Command *command) {
+static int set_color(const Command *command, ShellContext *context) {
+    if (context && !context->color_enabled) {
+        printf("Color output is disabled in your OHSH config.\n");
+        return 0;
+    }
+
     if (!command->color) {
         printf("What color should I use?\n\nExample:\n  color cyan\n");
         return 1;
@@ -826,18 +1030,12 @@ static int update_ohsh(void) {
     return 0;
 }
 
-static int run_external_parent(const Command *command) {
-    char *path = ohsh_find_executable(command->name);
-    if (!path) {
-        printf("I don't recognize \"%s\" yet.\n", command->name);
-        print_command_suggestions();
-        return 127;
-    }
-    ohsh_free(path);
+static int run_external_line(const char *line, const ShellContext *context) {
+    if (!line || line[0] == '\0') return 0;
 
-    int status = ohsh_run_command(command->args, command->redirect_in, command->redirect_out, command->redirect_append);
+    int status = ohsh_run_shell_line(line, context ? context->fallback_shell : NULL);
     if (status < 0) {
-        printf("I couldn't run \"%s\": %s\n", command->name, ohsh_platform_error());
+        printf("I couldn't run that system command: %s\n", ohsh_platform_error());
         return 1;
     }
     return status;
@@ -871,11 +1069,11 @@ static int run_command_action(const Command *command, ShellContext *context) {
         case COMMAND_MAKE_FILE:
             return make_file(command);
         case COMMAND_DELETE_PATH:
-            return delete_path_command(command);
+            return delete_path_command(command, context);
         case COMMAND_COPY_PATH:
-            return copy_path_command(command);
+            return copy_path_command(command, context);
         case COMMAND_MOVE_PATH:
-            return move_path_command(command);
+            return move_path_command(command, context);
         case COMMAND_READ_FILE:
             return read_file_command(command);
         case COMMAND_CLEAR_SCREEN:
@@ -885,11 +1083,11 @@ static int run_command_action(const Command *command, ShellContext *context) {
         case COMMAND_SHOW_HISTORY:
             return show_history(context);
         case COMMAND_COLOR:
-            return set_color(command);
+            return set_color(command, context);
         case COMMAND_UPDATE:
             return update_ohsh();
         case COMMAND_EXTERNAL:
-            return run_external_parent(command);
+            return run_external_line(command->name, context);
         case COMMAND_EXIT:
             return 0;
         default:
@@ -897,6 +1095,13 @@ static int run_command_action(const Command *command, ShellContext *context) {
             print_command_suggestions();
             return 1;
     }
+}
+
+static int pipeline_is_external_only(Pipeline pipeline) {
+    for (int i = 0; i < pipeline.command_count; i++) {
+        if (pipeline.commands[i].kind != COMMAND_EXTERNAL) return 0;
+    }
+    return pipeline.command_count > 0;
 }
 
 static int run_pipeline(Pipeline pipeline) {
@@ -925,18 +1130,23 @@ ExecutionResult execute(Pipeline pipeline, ShellContext *context) {
     if (pipeline.command_count == 0) return EXECUTION_CONTINUE;
 
     if (pipeline.command_count > 1) {
-        run_pipeline(pipeline);
+        int status = pipeline_is_external_only(pipeline)
+            ? run_external_line(pipeline.raw_line, context)
+            : run_pipeline(pipeline);
+        if (context) context->last_status = status;
         return EXECUTION_CONTINUE;
     }
 
     Command *command = &pipeline.commands[0];
     if (command->kind == COMMAND_EXIT) {
         printf("bye\n");
+        if (context) context->last_status = 0;
         return EXECUTION_EXIT;
     }
 
     if (command->kind == COMMAND_EXTERNAL) {
-        run_external_parent(command);
+        int status = run_external_line(pipeline.raw_line, context);
+        if (context) context->last_status = status;
         return EXECUTION_CONTINUE;
     }
 
@@ -945,10 +1155,12 @@ ExecutionResult execute(Pipeline pipeline, ShellContext *context) {
         if (command->redirect_in) print_missing_path(command->redirect_in);
         else printf("I couldn't redirect that command: %s\n", ohsh_platform_error());
         ohsh_end_redirect(redirect);
+        if (context) context->last_status = 1;
         return EXECUTION_CONTINUE;
     }
 
-    run_command_action(command, context);
+    int status = run_command_action(command, context);
+    if (context) context->last_status = status;
     ohsh_end_redirect(redirect);
     return EXECUTION_CONTINUE;
 }

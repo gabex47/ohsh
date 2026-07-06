@@ -93,6 +93,13 @@ static int is_permanent_word(const char *word) {
     return is_any_word(word, words);
 }
 
+static int is_force_word(const char *word) {
+    static const char *const words[] = {
+        "--force", "-y", "--yes", NULL
+    };
+    return is_any_word(word, words);
+}
+
 static char *join_words(char **words, int start, int end) {
     if (start >= end) return NULL;
 
@@ -144,6 +151,20 @@ static void set_external(Command *command, char **words, int count) {
     }
     command->args[limit] = NULL;
     command->arg_count = limit;
+}
+
+static void free_command_contents(Command *command) {
+    free(command->name);
+    for (int arg = 0; arg < command->arg_count; arg++) free(command->args[arg]);
+    free(command->target);
+    free(command->source);
+    free(command->destination);
+    free(command->text);
+    free(command->color);
+    free(command->filter_extension);
+    free(command->error);
+    free(command->redirect_out);
+    free(command->redirect_in);
 }
 
 static char *extension_from_word(const char *word) {
@@ -685,17 +706,30 @@ static Command parse_words(char **words, int count) {
     if (start >= end) return command;
 
     char *trimmed[MAX_ARGS];
+    char *cleaned[MAX_ARGS];
     int trimmed_count = 0;
+    int cleaned_count = 0;
+    int force = 0;
     for (int i = start; i < end && trimmed_count < MAX_ARGS; i++) {
         trimmed[trimmed_count++] = words[i];
+        if (is_force_word(words[i])) {
+            force = 1;
+            continue;
+        }
+        cleaned[cleaned_count++] = words[i];
     }
 
-    for (int i = 0; patterns[i].handler != NULL; i++) {
-        if (patterns[i].handler(&command, trimmed, trimmed_count)) {
-            return command;
+    if (cleaned_count > 0) {
+        for (int i = 0; patterns[i].handler != NULL; i++) {
+            if (patterns[i].handler(&command, cleaned, cleaned_count)) {
+                command.force = force;
+                return command;
+            }
         }
     }
 
+    free_command_contents(&command);
+    init_command(&command);
     set_external(&command, trimmed, trimmed_count);
     return command;
 }
@@ -718,6 +752,7 @@ static void add_unknown_pipeline_error(Pipeline *pipeline, const char *message) 
 Pipeline parse(TokenList list) {
     Pipeline pipeline;
     pipeline.command_count = 0;
+    pipeline.raw_line = list.source ? dup_string(list.source) : NULL;
 
     if (list.error) {
         add_unknown_pipeline_error(&pipeline, list.error);
@@ -791,22 +826,11 @@ void free_pipeline(Pipeline *pipeline) {
     for (int i = 0; i < pipeline->command_count; i++) {
         Command *command = &pipeline->commands[i];
 
-        free(command->name);
-        for (int arg = 0; arg < command->arg_count; arg++) {
-            free(command->args[arg]);
-        }
-
-        free(command->target);
-        free(command->source);
-        free(command->destination);
-        free(command->text);
-        free(command->color);
-        free(command->filter_extension);
-        free(command->error);
-        free(command->redirect_out);
-        free(command->redirect_in);
+        free_command_contents(command);
     }
 
+    free(pipeline->raw_line);
+    pipeline->raw_line = NULL;
     pipeline->command_count = 0;
 }
 

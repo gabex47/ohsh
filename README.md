@@ -28,7 +28,11 @@ Traditional system commands still work when OHSH doesn't translate a phrase, so 
   - [Homebrew](#-install-with-homebrew)
   - [From Source](#install-from-source)
 - [Run](#run)
+- [Scripts](#scripts)
+- [Safety](#safety)
+- [Configuration](#configuration)
 - [Command Examples](#command-examples)
+- [Command Reference](#command-reference)
 - [Project Structure](#project-structure)
 - [Architecture](#architecture)
 - [Development](#development)
@@ -47,10 +51,13 @@ Traditional system commands still work when OHSH doesn't translate a phrase, so 
 - Occasional tips after commands
 - Quoted filenames such as `"my notes.txt"`
 - Friendly errors and path suggestions
+- Safe confirmations for deletes and overwrites
+- `ohsh run script.osh` for automation
+- `.ohshrc` config files and user aliases
 - Session command history
 - Native filesystem operations for OHSH commands
-- External command execution through `PATH`
-- Pipelines with `|`
+- Exact fallback to the host shell for traditional commands
+- Pipes with `|`
 - Input redirection with `<`
 - Output redirection with `>` and `>>`
 - Colored terminal output
@@ -209,6 +216,89 @@ Type "examples" to see what you can say.
 
 ---
 
+## Scripts
+
+Run an OHSH script file non-interactively:
+
+```bash
+ohsh run script.osh
+```
+
+Scripts use the same natural-language commands:
+
+```ohsh
+make folder Backup
+copy README.md to Backup --yes
+show files
+```
+
+Destructive script actions require an explicit confirmation flag:
+
+```bash
+ohsh run cleanup.osh --yes
+```
+
+or per command:
+
+```ohsh
+delete temp.txt --yes
+move draft.txt to final.txt --force
+copy notes.txt to Backup -y
+```
+
+Lines beginning with `#` are ignored in scripts.
+
+---
+
+## Safety
+
+OHSH is safe by default:
+
+- `delete` asks before removing files or folders.
+- `delete every txt file` asks before bulk deletion.
+- `copy` and `move` ask before overwriting an existing destination.
+- Broad targets such as `/`, `.`, `..`, and your home folder are blocked.
+- Script mode refuses destructive operations unless `--yes`, `-y`, or
+  `--force` is present.
+
+Examples:
+
+```ohsh
+delete temp.txt
+delete temp.txt --yes
+copy notes.txt to Backup --force
+```
+
+---
+
+## Configuration
+
+OHSH reads config from `~/.ohshrc`, then from a project-local `.ohshrc` if one
+exists. The local file can override or add project-specific aliases.
+
+```ini
+confirm = true
+tips = true
+color = true
+fallback_shell = /bin/bash
+
+alias docs = goto Documents
+alias files = show files
+alias cleanup = delete every tmp file
+```
+
+Supported settings:
+
+| Setting | Values | Purpose |
+| --- | --- | --- |
+| `confirm` / `confirm_destructive` | `true`, `false` | Ask before destructive or overwrite actions. |
+| `tips` | `true`, `false` | Show occasional usage tips. |
+| `color` | `true`, `false` | Allow ANSI color commands. |
+| `fallback_shell` | shell path/name | Shell used for unrecognized commands. |
+| `alias phrase = replacement` | text | Expand custom phrases before parsing. |
+
+---
+
 ## Command Examples
 
 ### Navigation
@@ -294,6 +384,28 @@ cat src/main.c | grep include
 
 ---
 
+## Command Reference
+
+| Intent | Examples |
+| --- | --- |
+| Go somewhere | `goto Downloads`, `go to Projects`, `open Documents`, `cd src` |
+| Show location | `where am i`, `pwd`, `show location` |
+| List things | `show files`, `show folders`, `show everything`, `show txt files` |
+| Create | `make folder Games`, `create file notes.txt`, `new file "ideas.txt"` |
+| Read | `read README.md`, `show contents of notes.txt` |
+| Copy | `copy README.md to Backup`, `duplicate notes.txt to notes-copy.txt` |
+| Move/rename | `move logo.png into Assets`, `rename draft.txt to final.txt` |
+| Delete | `delete temp.txt`, `delete OldFolder permanently --yes` |
+| Bulk delete | `delete every txt file --yes` |
+| Print | `say hello`, `print hello from OHSH` |
+| Shell | `clear screen`, `show history`, `examples`, `help`, `exit` |
+| Traditional fallback | `git status`, `cat *.c | grep main`, `make test` |
+
+Traditional fallback commands are sent to the host shell as written, so normal
+shell quoting, globs, pipes, and redirection work.
+
+---
+
 ## Project Structure
 
 ```
@@ -318,21 +430,26 @@ scripts/       local packaging helpers
 
 ## Architecture
 
-OHSH has four small layers:
+OHSH has a small, explicit pipeline:
 
-1. `main.c` reads a line, stores it in session history, and runs the pipeline.
-2. `lexer.c` turns input into tokens while preserving quoted filenames.
+1. `main.c` loads config, expands aliases, reads interactive or script input,
+   stores session history, and runs the command pipeline.
+2. `lexer.c` turns input into tokens while preserving quoted filenames,
+   escaped characters, pipes, and redirection.
 3. `parser.c` uses a command-pattern registry to map phrases into typed command
    actions such as `COMMAND_LIST`, `COMMAND_COPY_PATH`, and
    `COMMAND_DELETE_PATH`.
-4. `executor.c` dispatches those actions through `src/platform/`, keeping
-   OS-specific filesystem, process, and redirection behavior out of core shell
-   logic. It also owns the startup screen, prompt, help, examples, tips, and
-   friendly output formatting. Unknown commands fall back to normal system
-   command execution through the platform layer.
+4. `executor.c` performs semantic checks before acting: missing paths,
+   folder/file mismatches, dangerous delete targets, overwrite checks, and
+   confirmation prompts.
+5. `src/platform/` owns OS-specific filesystem, process, redirection, and shell
+   fallback behavior for macOS, Linux, and Windows.
 
 This keeps the user-facing language flexible while keeping execution explicit,
 testable, and easier to extend.
+
+See [MIGRATION.md](MIGRATION.md) for behavior changes from earlier OHSH builds
+and [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 ## Development
 
@@ -344,6 +461,7 @@ make install
 make uninstall
 make clean
 make test
+make sanitize
 ```
 
 Windows with MinGW/MSYS2:

@@ -19,6 +19,7 @@ typedef struct {
     Token *tokens;
     int count;
     char *error;
+    char *source;
 } TokenList;
 
 TokenList tokenize(const char *input);

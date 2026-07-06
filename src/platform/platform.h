@@ -52,6 +52,7 @@ int ohsh_begin_redirect(const char *redirect_in, const char *redirect_out, int a
 void ohsh_end_redirect(OhshRedirectState *state);
 int ohsh_run_command(char *const argv[], const char *redirect_in, const char *redirect_out, int append);
 int ohsh_run_pipeline(const OhshProcessCommand *commands, int count);
+int ohsh_run_shell_line(const char *line, const char *preferred_shell);
 const char *ohsh_platform_error(void);
 void ohsh_free(void *ptr);
 

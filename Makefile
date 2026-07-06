@@ -29,7 +29,7 @@ SRC = src/main.c src/lexer.c src/parser.c src/executor.c $(PLATFORM_SRC)
 HEADERS = src/lexer.h src/parser.h src/executor.h src/platform/platform.h
 OUT = $(EXE)
 
-.PHONY: all build run install uninstall clean test
+.PHONY: all build run install uninstall clean test sanitize
 
 all: build
 
@@ -48,7 +48,12 @@ uninstall:
 	$(UNINSTALL_CMD)
 
 test: build
-	printf 'examples\nwhere am i\nexit\n' | $(RUN_CMD)
+	./tests/run-tests.sh "$(RUN_CMD)"
+
+sanitize:
+	$(MAKE) clean
+	$(MAKE) build CFLAGS="-Wall -Wextra -O1 -g -fsanitize=address,undefined" LDFLAGS="-fsanitize=address,undefined"
+	./tests/run-tests.sh "$(RUN_CMD)"
 
 clean:
 	$(CLEAN_CMD)

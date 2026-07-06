@@ -111,6 +111,7 @@ TokenList tokenize(const char *input) {
     list.tokens = malloc(sizeof(Token) * (size_t)capacity);
     list.count = 0;
     list.error = NULL;
+    list.source = dup_string(input ? input : "");
 
     if (!list.tokens) {
         list.error = dup_string("OHSH ran out of memory while reading that command.");
@@ -173,4 +174,5 @@ void free_tokens(TokenList list) {
     }
     free(list.tokens);
     free(list.error);
+    free(list.source);
 }
