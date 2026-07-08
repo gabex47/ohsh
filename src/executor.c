@@ -487,6 +487,13 @@ void free_shell_context(ShellContext *context) {
 void print_welcome(void) {
     char *where = current_compact_path();
     printf("\n");
+printf(
+"  /\\/\\    ___  _   _ ____  _   _          ___   _____\n"
+"  >  <   / _ \\| | | / ___|| | | | __   __/ _ \\ |___ /\n"
+" _\\/\\ | | | | | |_| \\___ \\| |_| | \\ \\ / / | | |  |_ \\\n"
+"/ __` | | |_| |  _  |___) |  _  |  \\ V /| |_| | ___) |\n"
+"\\____/   \\___/|_| |_|____/|_| |_|   \\_/  \\___(_)____/\n"
+);
     printf("🌊 OHSH v%s\n", OHSH_VERSION);
     printf("Human-first shell\n\n");
     printf("Type \"help\" to explore commands.\n");
